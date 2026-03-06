@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Mailbox Inspector</title>
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #1a1a2e;
+      font-family: 'Courier New', monospace;
+    }
+
+    #pane {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px;
+      height: 32px;
+      width: 100%;
+      overflow: hidden;
+    }
+
+    #dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #00ff88;
+      flex-shrink: 0;
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    #dot.loading {
+      background: #ffaa00;
+    }
+
+    #dot.error {
+      background: #ff4444;
+      animation: none;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    #mailbox {
+      font-size: 11px;
+      color: #00ff88;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      flex: 1;
+      letter-spacing: 0.02em;
+    }
+
+    #mailbox.loading {
+      color: #888;
+    }
+
+    #mailbox.error {
+      color: #ff4444;
+    }
+
+    #copy-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 2px;
+      flex-shrink: 0;
+      opacity: 0.5;
+      transition: opacity 0.15s;
+      display: flex;
+      align-items: center;
+      color: #00ff88;
+    }
+
+    #copy-btn:hover { opacity: 1; }
+    #copy-btn.hidden { display: none; }
+
+    #copy-btn svg {
+      width: 11px;
+      height: 11px;
+      fill: currentColor;
+    }
+
+    #copied-flash {
+      font-size: 9px;
+      color: #00ff88;
+      opacity: 0;
+      transition: opacity 0.2s;
+      flex-shrink: 0;
+    }
+
+    #copied-flash.show { opacity: 1; }
+  </style>
+</head>
+<body>
+  <div id="pane">
+    <div id="dot" class="loading"></div>
+    <span id="mailbox" class="loading">loading…</span>
+    <button id="copy-btn" class="hidden" title="Copy to clipboard">
+      <svg viewBox="0 0 16 16"><path d="M4 4h8v10H4V4zm0-1a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H4zM2 2h7V1H2a1 1 0 0 0-1 1v10h1V2z"/></svg>
+    </button>
+    <span id="copied-flash">✓</span>
+  </div>
+
+  <script>
+    Office.onReady(function(info) {
+      if (info.host === Office.HostType.Outlook) {
+        loadMailbox();
+        // Re-read when item changes (pinned pane)
+        if (Office.context.mailbox.addHandlerAsync) {
+          Office.context.mailbox.addHandlerAsync(
+            Office.EventType.ItemChanged,
+            function() { loadMailbox(); }
+          );
+        }
+      }
+    });
+
+    function loadMailbox() {
+      var dot = document.getElementById('dot');
+      var label = document.getElementById('mailbox');
+      var btn = document.getElementById('copy-btn');
+
+      dot.className = 'loading';
+      label.className = 'loading';
+      label.textContent = 'loading…';
+      btn.className = 'hidden';
+
+      try {
+        var mailbox = Office.context.mailbox;
+        var address = null;
+
+        // Primary: userProfile.emailAddress (always available)
+        if (mailbox.userProfile && mailbox.userProfile.emailAddress) {
+          address = mailbox.userProfile.emailAddress;
+        }
+
+        // Fallback: item sender (read mode)
+        if (!address) {
+          var item = mailbox.item;
+          if (item) {
+            if (item.from && item.from.emailAddress) {
+              address = item.from.emailAddress;
+            } else if (item.sender && item.sender.emailAddress) {
+              address = item.sender.emailAddress;
+            }
+          }
+        }
+
+        if (address) {
+          showAddress(address);
+        } else {
+          showError('unavailable');
+        }
+      } catch (e) {
+        showError('error');
+      }
+    }
+
+    function showAddress(addr) {
+      var dot = document.getElementById('dot');
+      var label = document.getElementById('mailbox');
+      var btn = document.getElementById('copy-btn');
+
+      dot.className = '';
+      label.className = '';
+      label.textContent = addr;
+      btn.className = '';
+
+      btn.onclick = function() {
+        copyText(addr);
+      };
+    }
+
+    function showError(msg) {
+      var dot = document.getElementById('dot');
+      var label = document.getElementById('mailbox');
+      document.getElementById('copy-btn').className = 'hidden';
+
+      dot.className = 'error';
+      label.className = 'error';
+      label.textContent = msg;
+    }
+
+    function copyText(text) {
+      var flash = document.getElementById('copied-flash');
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function() { flashCopied(); });
+      } else {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        flashCopied();
+      }
+    }
+
+    function flashCopied() {
+      var flash = document.getElementById('copied-flash');
+      flash.className = 'show';
+      setTimeout(function() { flash.className = ''; }, 1200);
+    }
+  </script>
+</body>
+</html>
